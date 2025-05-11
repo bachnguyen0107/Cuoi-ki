@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Notes App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="assets/css/bootstrap.min.css" rel="stylesheet">
+    <link href="home.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- User Dropdown -->
+        <div class="d-flex justify-content-end mb-4">
+            <div class="dropdown">
+                <button class="btn btn-secondary dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown">
+                    <?= htmlspecialchars($username) ?>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="profile.php">Profile</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="logout.php">Logout</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Note Editor -->
+            <div class="col-lg-4 mb-4">
+                <div class="card" id="noteEditor">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><?= isset($_GET['edit']) ? 'Edit Note' : 'New Note' ?></h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="noteForm">
+                            <input type="hidden" id="noteId" name="note_id">
+                            <div class="mb-3">
+                                <label for="noteTitle" class="form-label">Title</label>
+                                <input type="text" class="form-control" id="noteTitle" name="title" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="noteContent" class="form-label">Content</label>
+                                <textarea class="form-control" id="noteContent" name="content" rows="5"></textarea>
+                            </div>
+                            <div class="auto-save-status text-end mb-2">
+                                <span id="saveStatus">Changes will be saved automatically</span>
+                            </div>
+                            <button type="button" class="btn btn-danger w-100" id="clearBtn">
+                                <span class="bi bi-trash"></span> Clear
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Notes Display -->
+            <div class="col-lg-8">
+                <div class="d-flex justify-content-between mb-3">
+                    <h3>Your Notes</h3>
+                    <div>
+                        <button class="btn btn-outline-secondary view-toggle active" data-view="grid">
+                            <span class="bi bi-grid"></span> Grid
+                        </button>
+                        <button class="btn btn-outline-secondary view-toggle" data-view="list">
+                            <span class="bi bi-list-ul"></span> List
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="grid-view" id="notesContainer">
+                    <?php foreach ($all_notes as $note): ?>
+                        <div class="note-card card mb-3" data-id="<?= $note['id'] ?>">
+                            <div class="card-body">
+                                <h5 class="card-title"><?= htmlspecialchars($note['title']) ?></h5>
+                                <p class="card-text"><?= nl2br(htmlspecialchars($note['content'])) ?></p>
+                                <small class="text-muted">
+                                    Last updated: <?= date('M j, Y g:i a', strtotime($note['updated_at'])) ?>
+                                </small>
+                            </div>
+                            <div class="card-footer bg-transparent">
+                                <button class="btn btn-sm btn-outline-primary edit-note">
+                                    <span class="bi bi-pencil"></span> Edit
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger float-end delete-note">
+                                    <span class="bi bi-trash"></span>
+                                </button>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Local Bootstrap JS Bundle -->
+    <script src="assets/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Auto-save functionality
+        let saveTimeout;
+        const form = document.getElementById('noteForm');
+        const saveStatus = document.getElementById('saveStatus');
+        
+        form.addEventListener('input', () => {
+            clearTimeout(saveTimeout);
+            saveStatus.textContent = 'Saving...';
+            saveStatus.style.opacity = '1';
+            
+            saveTimeout = setTimeout(() => {
+                const formData = new FormData(form);
+                
+                fetch('home.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.text())
+                .then(data => {
+                    saveStatus.textContent = 'Changes saved';
+                    setTimeout(() => {
+                        saveStatus.style.opacity = '0.7';
+                    }, 2000);
+                    
+                    // Update note ID if new note was created
+                    if (!formData.get('note_id')) {
+                        const noteId = data.match(/note_id=(\d+)/)?.[1];
+                        if (noteId) document.getElementById('noteId').value = noteId;
+                    }
+                    
+                    // Refresh notes list if new note was created
+                    if (!formData.get('note_id')) {
+                        location.reload();
+                    }
+                });
+            }, 1000);
+        });
+
+        // Clear form
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            form.reset();
+            document.getElementById('noteId').value = '';
+            saveStatus.textContent = 'Ready for new note';
+        });
+
+        // Edit note
+        document.querySelectorAll('.edit-note').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const noteCard = btn.closest('.note-card');
+                document.getElementById('noteId').value = noteCard.dataset.id;
+                document.getElementById('noteTitle').value = noteCard.querySelector('.card-title').textContent;
+                document.getElementById('noteContent').value = noteCard.querySelector('.card-text').textContent.replace(/<br\s*\/?>/gi, '\n');
+                saveStatus.textContent = 'Editing existing note';
+                
+                // Scroll to editor
+                document.getElementById('noteEditor').scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+
+        // View toggle
+        document.querySelectorAll('.view-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const view = btn.dataset.view;
+                const container = document.getElementById('notesContainer');
+                
+                // Update active button
+                document.querySelectorAll('.view-toggle').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                // Update view
+                if (view === 'grid') {
+                    container.classList.remove('list-view');
+                    container.classList.add('grid-view');
+                } else {
+                    container.classList.remove('grid-view');
+                    container.classList.add('list-view');
+                }
+                
+                // Store preference
+                localStorage.setItem('notesView', view);
+            });
+        });
+
+        // Load view preference
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedView = localStorage.getItem('notesView') || 'grid';
+            document.querySelector(`.view-toggle[data-view="${savedView}"]`).click();
+        });
+    </script>
+</body>
+</html>
